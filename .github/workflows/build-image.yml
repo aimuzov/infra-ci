@@ -1,0 +1,82 @@
+name: Build and publish a release image
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        required: true
+        type: string
+      image-suffix:
+        description: Optional suffix to append to the caller repository name
+        default: ''
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      context:
+        default: .
+        type: string
+    secrets:
+      build-env:
+        description: Optional environment file for the Docker build only
+    outputs:
+      image:
+        value: ${{ jobs.build.outputs.image }}
+      revision:
+        value: ${{ jobs.build.outputs.revision }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.result.outputs.image }}
+      revision: ${{ steps.metadata.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: metadata
+        name: Resolve image name and revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          SUFFIX: ${{ inputs.image-suffix }}
+        run: |
+          if [[ -n "$SUFFIX" && ! "$SUFFIX" =~ ^-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo 'Invalid image suffix' >&2
+            exit 1
+          fi
+          printf 'name=ghcr.io/%s%s\n' "${REPOSITORY,,}" "$SUFFIX" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.name }}:sha-${{ steps.metadata.outputs.revision }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.metadata.outputs.revision }}
+          secrets: |
+            "env=${{ secrets.build-env }}"
+      - id: result
+        name: Return immutable image reference
+        env:
+          IMAGE: ${{ steps.metadata.outputs.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'image=%s@%s\n' "$IMAGE" "$DIGEST" >> "$GITHUB_OUTPUT"
