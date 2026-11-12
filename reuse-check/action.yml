@@ -1,0 +1,24 @@
+name: Reuse verified CI
+description: Reuse a successful pull request check for the same tested Git tree and action revisions.
+inputs:
+  token:
+    description: Token with contents:read and actions:read in the calling repository.
+    required: true
+    default: ${{ github.token }}
+  workflow:
+    description: Path of the check workflow in the calling repository.
+    required: true
+  matrix:
+    description: JSON matrix values for the current check job.
+    required: false
+    default: '{}'
+outputs:
+  reused:
+    description: Whether a matching successful pull request check was found.
+  run-url:
+    description: URL of the successful check being reused.
+  reason:
+    description: Explanation of the reuse or full-check decision.
+runs:
+  using: node24
+  main: index.mjs

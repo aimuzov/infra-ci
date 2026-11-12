@@ -1,0 +1,38 @@
+name: Record verified CI
+description: Record the Git tree checked by a successful pull request job.
+inputs:
+  token:
+    description: Token with contents:read and actions:read in the calling repository.
+    required: true
+    default: ${{ github.token }}
+  workflow:
+    description: Path of the check workflow in the calling repository.
+    required: true
+  matrix:
+    description: JSON matrix values for the current check job.
+    required: false
+    default: '{}'
+outputs:
+  path:
+    description: Path of the generated proof, or an empty string when it cannot be recorded.
+    value: ${{ steps.proof.outputs.path }}
+  artifact-name:
+    description: Name binding the proof to this run, attempt, job and matrix.
+    value: ${{ steps.proof.outputs.artifact-name }}
+runs:
+  using: composite
+  steps:
+    - id: proof
+      shell: bash
+      env:
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_WORKFLOW: ${{ inputs.workflow }}
+        INPUT_MATRIX: ${{ inputs.matrix }}
+      run: node "$GITHUB_ACTION_PATH/index.mjs"
+    - if: steps.proof.outputs.path != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.proof.outputs.artifact-name }}
+        path: ${{ steps.proof.outputs.path }}
+        if-no-files-found: ignore
+        retention-days: 30
