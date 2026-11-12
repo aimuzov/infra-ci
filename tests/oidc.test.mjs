@@ -45,7 +45,7 @@ test('rejects wrong signer, alg, audience, issuer, repository, run, workflow, SH
 			{ workflow_ref: undefined },
 			{ event_name: 'pull_request' },
 			{ ref: 'refs/heads/other' },
-			{ nbf: 1 },
+			{ nbf: 0 },
 			{ exp: Math.floor(Date.now() / 1000) + 7200 },
 			{ job_workflow_ref: 'acme/site/.github/workflows/check.yml@refs/heads/main', job_workflow_sha: 'b'.repeat(40) },
 		].map((change) => token(claims(change))),
@@ -135,12 +135,18 @@ test('reports only safe static OIDC validation reasons and redacts malformed tok
 	const sensitive = 'token-secret-do-not-log'
 	await assert.rejects(
 		oidc.validate(token(claims({ aud: sensitive })), expected),
-		(error) => error.message === 'OIDC verification failed: Invalid issuer or audience' &&
-			!error.message.includes(sensitive),
+		(error) =>
+			error.message === 'OIDC verification failed: Invalid issuer or audience' && !error.message.includes(sensitive),
 	)
 	const malformed = Buffer.from('{"secret":"' + sensitive + '" invalid}').toString('base64url')
 	await assert.rejects(
 		oidc.validate(malformed + '.' + malformed + '.abc', expected),
 		(error) => error.message === 'OIDC verification failed' && !error.message.includes(sensitive),
 	)
+})
+
+test('accepts GitHub backdated not-before while rejecting not-before after issuance', async () => {
+	const payload = claims()
+	assert.ok(await new Oidc(oidcOptions({ ...payload, nbf: payload.iat - 300 })).current(expected))
+	await assert.rejects(new Oidc(oidcOptions({ ...payload, nbf: payload.iat + 1 })).current(expected))
 })
