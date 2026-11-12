@@ -129,3 +129,18 @@ test('rejects oversized JWT and never loads keys from untrusted JWT header URLs'
 	}
 	assert.ok(await new Oidc(options).current(expected))
 })
+
+test('reports only safe static OIDC validation reasons and redacts malformed token content', async () => {
+	const oidc = new Oidc(oidcOptions())
+	const sensitive = 'token-secret-do-not-log'
+	await assert.rejects(
+		oidc.validate(token(claims({ aud: sensitive })), expected),
+		(error) => error.message === 'OIDC verification failed: Invalid issuer or audience' &&
+			!error.message.includes(sensitive),
+	)
+	const malformed = Buffer.from('{"secret":"' + sensitive + '" invalid}').toString('base64url')
+	await assert.rejects(
+		oidc.validate(malformed + '.' + malformed + '.abc', expected),
+		(error) => error.message === 'OIDC verification failed' && !error.message.includes(sensitive),
+	)
+})
